@@ -151,28 +151,114 @@ def lodgings_post():
     else:
         return jsonify(error='Method not recogonized')
     
-@app.route('/boats', methods=['POST'])
-def post_boat():
-    try:
+@app.route('/boats', methods=['POST', 'GET'])
+def post_get_boat():
+    if request.method == 'POST':
         payload = verify_jwt(request)
-        print(payload)
-    except:
-        return ({"Error": "Invalid JWT"}, 401)
-    content = request.get_json()
 
-    new_boat = datastore.entity.Entity(key=client.key(BOATS))
-    new_boat.update({
-        "name": content["name"],
-        "type": content["type"],
-        "length": content["length"],
-        "public": content["public"],
-        "owner": payload["sub"]
-    })
-    client.put(new_boat)
-    return ({
-        "owner": payload["sub"],
-        "id": str(new_boat.key.id)
-    }, 201)
+        content = request.get_json()
+
+        new_boat = datastore.entity.Entity(key=client.key(BOATS))
+        new_boat.update({
+            "name": content["name"],
+            "type": content["type"],
+            "length": content["length"],
+            "public": content["public"],
+            "owner": payload["sub"]
+        })
+        client.put(new_boat)
+        return ({
+            "owner": payload["sub"],
+            "id": str(new_boat.key.id)
+        }, 201)
+    
+    elif request.method == 'GET':
+        try:
+            payload = verify_jwt(request)
+            owner_id_query = client.query(kind=BOATS)
+            results = list(owner_id_query.fetch())
+            response = []
+
+            for index in results:
+                if index["owner"] == payload["sub"]:
+                    response.append({
+                        "id": index["id"],
+                        "name": index["name"],
+                        "type": index["type"],
+                        "length": index["length"],
+                        "public": index["public"],
+                        "owner": index["owner"]
+                    })
+                
+            return (response, 200)
+        
+        except:
+            owner_id_query = client.query(kind=BOATS)
+            results = list(owner_id_query.fetch())
+            response = []
+
+            for index in results:
+                if index["public"] == True:
+                    response.append({
+                        "id": index["id"],
+                        "name": index["name"],
+                        "type": index["type"],
+                        "length": index["length"],
+                        "public": index["public"],
+                        "owner": index["owner"]
+                    })
+            
+            return (response, 200)
+
+
+@app.route('/owners/<owner_id>/boats')
+def get_owners_public_boats(owner_id):
+    owner_id_query = client.query(kind=BOATS)
+    results = list(owner_id_query.fetch())
+    response = []
+    for index in results:
+        if index["public"] is True and index["owner"] == owner_id:
+            response.append({
+                "id": index["id"],
+                "name": index["name"],
+                "type": index["type"],
+                "length": index["length"],
+                "public": index["public"],
+                "owner": index["owner"]
+            })
+
+    return (response, 200)
+
+@app.route('/boats/<boat_id>')
+def delete_boat(boat_id):
+    payload = verify_jwt(request)
+
+    boat_key = client.key(BOATS, int(boat_id))
+    boat = client.get(key=boat_key)
+
+    if boat is None:
+        return ({'Error': 'No boat with this boat_id exists'}, 403)
+    
+    if boat["owner"] != payload["sub"]:
+        return ({"Error": "Boat is owned by someone else"}, 403)
+
+    client.delete(boat_key)
+    return ('', 204)
+
+    # boat_query = client.query(kind=BOATS)
+    # results = list(boat_query.fetch())
+
+    # # for index in results:
+    # #     if index["id"] == boat_id:
+    # #         if payload["sub"] != index["owner"]:
+    # #             return ({"Error": "Boat is owned by someone else"}, 403)
+            
+    # #         boat_key = client.key(BOATS, int(boat_id))
+    # #         boat = client.get(key=boat_key)
+    # #         client.delete(boat_key)
+        
+    # # return ({"Error": "No boat with this boat_id exists"}, 403)
+
 
 # Decode the JWT supplied in the Authorization header
 @app.route('/decode', methods=['GET'])
